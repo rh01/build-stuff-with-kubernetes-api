@@ -2,13 +2,13 @@ package main
 
 import (
 	"os"
-
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/dustin/go-humanize"
+	humanize "github.com/dustin/go-humanize"
 	"github.com/urfave/cli"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -45,6 +45,7 @@ func main() {
 		for {
 			time.Sleep(5 * time.Second)
 		}
+
 	}
 	app.Run(os.Args)
 }
@@ -56,7 +57,7 @@ func watchNodes() {
 		fields.Everything())
 	store, controller = cache.NewInformer(
 		watchList,
-		&api.Node{},
+		&v1.Node{},
 		time.Second*30,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc:    handleNodeAdd,
@@ -70,7 +71,7 @@ func watchNodes() {
 	// Shared informer example
 	informer := cache.NewSharedIndexInformer(
 		watchList,
-		&api.Node{},
+		&v1.Node{},
 		time.Second*10,
 		cache.Indexers{},
 	)
@@ -88,7 +89,7 @@ func watchNodes() {
 }
 
 func handleNodeAdd(obj interface{}) {
-	node := obj.(*api.Node)
+	node := obj.(*v1.Node)
 	logrus.Infof("Node [%s] is added; checking resources...", node.Name)
 	checkImageStorage(node)
 }
@@ -100,13 +101,13 @@ func handleNodeUpdate(old, current interface{}) {
 		logrus.Debugf("Found the node [%v] in cache", nodeInterface)
 	}
 
-	node := current.(*api.Node)
+	node := current.(*v1.Node)
 	checkImageStorage(node)
 }
 
 func pollNodes() error {
 	for {
-		nodes, err := clientset.Core().Nodes().List(v1.ListOptions{FieldSelector: "metadata.name=minikube"})
+		nodes, err := clientset.Core().Nodes().List(metav1.ListOptions{FieldSelector: "metadata.name=k8s-n1"})
 		if err != nil {
 			logrus.Warnf("Failed to poll the nodes: %v", err)
 			continue
@@ -131,8 +132,10 @@ func pollNodes() error {
 	}
 }
 
-func checkImageStorage(node *api.Node) {
+func checkImageStorage(node *v1.Node) {
+	// logrus.Printf("Node name: %s", node.Name)
 	var storage int64
+	// imageCapacity = make(map[string]int64)
 	for _, image := range node.Status.Images {
 		storage = storage + image.SizeBytes
 	}
@@ -142,6 +145,7 @@ func checkImageStorage(node *api.Node) {
 			changed = false
 		}
 	}
+
 	if changed {
 		logrus.Infof("Node [%s] storage occupied by images changed. Old value: [%v], new value: [%v]", node.Name,
 			humanize.Bytes(uint64(imageCapacity[node.Name])), humanize.Bytes(uint64(storage)))
